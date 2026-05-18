@@ -27,7 +27,7 @@ plt.ion()
 
 
 # Ventana base y factor de escala
-BASE_W, BASE_H = 1080, 720
+BASE_W, BASE_H = 640, 480
 WINDOW_FRACTION = 0.97
 EXTRA_SCALE = 1.1
 
@@ -41,7 +41,7 @@ class Sample:
 @dataclass
 class Sample:
     velocidad_bala: float
-    distancia: float
+    distancia: float 
     altura_bala: float  # NUEVA VARIABLE
     accion: int         # 0: Quieto, 1: Saltar, 2: Agacharse
 
@@ -410,28 +410,7 @@ class Juego:
                 self.salto_vel = self.salto_vel_inicial
                 self.en_suelo = True
 
-    # ----------------- datos / ML -----------------
-    """def registrar_decision_manual(self) -> None:
-        # IMPORTANTE: aquí NO debemos filtrar por en_suelo.
-        # En el mismo frame en que pulsas ESPACIO se llama a iniciar_salto(),
-        # que pone en_suelo = False antes de registrar, y se perdería ese frame.
-        # Solo comprobamos que la bala esté disparada.
-        if not self.bala_disparada:
-            return
-        distancia = abs(self.jugador.x - self.bala.x)
-        # Entrenamos para que el modelo imite TU estilo:
-        # registramos desde que la bala sale, en cada frame relevante.
-        # Y marcamos salto = 1 DURANTE TODO EL TIEMPO QUE EL MUÑECO
-        # ESTÁ EN EL AIRE (no en_suelo).
-        salto_label = 0 if self.en_suelo else 1
-        self.datos_modelo.append(
-            Sample(
-                velocidad_bala=float(self.velocidad_bala),
-                distancia=float(distancia),
-                salto=salto_label,
-            )
-        )"""
-    
+
     def registrar_decision_manual(self) -> None:
         if not self.bala_disparada:
             return
@@ -453,42 +432,6 @@ class Juego:
                 accion=accion_label,
             )
         )
-
-    """def entrenar_modelo(self) -> Tuple[bool, str]:
-        samples = list(self.datos_modelo)
-        if len(samples) < 80:
-            return False, "Necesitas más datos (>= 80). Juega en MANUAL."
-        X = [[s.velocidad_bala, s.distancia] for s in samples]
-        y = [s.salto for s in samples]
-        clases = sorted(set(y))
-        # Si solo hay una clase, entrenamos un "modelo trivial"
-        # que siempre devuelve esa clase, en lugar de marcar error.
-        if len(clases) < 2:
-            self._reset_modelo()
-            self.clase_unica = int(clases[0])
-            self.modelo_entrenado = True
-            tipo = "SIEMPRE NO-SALTA (0)" if self.clase_unica == 0 else "SIEMPRE SALTA (1)"
-            return True, f"Modelo trivial entrenado: {tipo}. Junta datos de ambas clases para un modelo más fino."
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_test = scaler.transform(X_test)
-        clf = MLPClassifier(
-            hidden_layer_sizes=(3, 3),
-            activation="relu",
-            solver="adam",
-            max_iter=300000,
-            random_state=42,
-        )
-        clf.fit(X_train, y_train)
-        acc = clf.score(X_test, y_test)
-        self._reset_modelo()
-        self.scaler = scaler
-        self.modelo = clf
-        self.modelo_entrenado = True
-        return True, f"MLP entrenado. Accuracy test ≈ {acc:.3f}"""
     
     def entrenar_modelo(self) -> Tuple[bool, str]:
         samples = list(self.datos_modelo)
@@ -540,40 +483,6 @@ class Juego:
         self.modelo = clf
         self.modelo_entrenado = True
         return True, f"MLP entrenado. Accuracy test ≈ {acc:.3f}"
-
-    """def decision_auto_saltar(self) -> bool:
-        if not self.modelo_entrenado:
-            return False
-        if (not self.bala_disparada) or (not self.en_suelo):
-            return False
-        distancia = abs(self.jugador.x - self.bala.x)
-        # En modo AUTO evaluamos desde que la bala sale,
-        # para que el modelo también aprenda a "no hacer nada"
-        # cuando la bala aún está lejos.
-
-        # Caso especial: modelo trivial de una sola clase
-        if self.clase_unica is not None and self.modelo is None:
-            proba_salto = 1.0 if self.clase_unica == 1 else 0.0
-            self.ultima_proba_salto = proba_salto
-            return self.clase_unica == 1
-
-        # Caso normal: modelo MLP con scaler
-        if self.modelo is None or self.scaler is None:
-            return False
-
-        X = [[float(self.velocidad_bala), float(distancia)]]
-        Xs = self.scaler.transform(X)
-        proba_salto = None
-        if hasattr(self.modelo, "predict_proba"):
-            proba_salto = float(self.modelo.predict_proba(Xs)[0][1])
-            decision = proba_salto >= 0.5
-        else:
-            pred = int(self.modelo.predict(Xs)[0])
-            proba_salto = 1.0 if pred == 1 else 0.0
-            decision = pred == 1
-        # Guardamos la última probabilidad para mostrarla en pantalla.
-        self.ultima_proba_salto = proba_salto
-        return decision"""
     
     def decision_auto(self) -> int:
         if not self.modelo_entrenado or not self.bala_disparada:
@@ -714,18 +623,6 @@ class Juego:
         # "se cierra y se abre" constantemente.
         if self.jugador.colliderect(self.bala):
             self._reset_estado_juego()
-
-        # ==========================================
-        # DEBUG: DIBUJAR HITBOXES (Cajas de colisión)
-        # ==========================================
-        # Dibuja un rectángulo rojo de grosor 2 sobre el jugador
-        #pygame.draw.rect(self.pantalla, (255, 0, 0), self.jugador, 3)
-        
-        # Dibuja un rectángulo verde de grosor 2 sobre la bala
-        #pygame.draw.rect(self.pantalla, (0, 255, 255), self.bala, 3)
-        
-        # Dibuja un rectángulo azul sobre el UFO
-        #pygame.draw.rect(self.pantalla, (0, 0, 255), self.nave, 2)
 
         # Info del modelo en tiempo real (solo si hay modelo entrenado)
         if self.modelo_entrenado and self.modo_auto and self.ultima_proba_salto is not None:
