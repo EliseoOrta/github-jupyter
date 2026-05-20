@@ -103,9 +103,15 @@ class Juego:
         self.gravedad = 1.0
         self.salto_vel = self.salto_vel_inicial
 
+        # --- ANIMACIÓN CORRER ---
         self.current_frame = 0
-        self.frame_speed = 10
+        self.run_frame_speed = 2
         self.frame_count = 0
+
+        # --- ANIMACIÓN SALTO ---
+        self.current_jump_frame = 0
+        self.jump_frame_speed = 6
+        self.jump_frame_count = 0
 
         # Velocidad base de la bala (en píxeles/frame, negativa porque va de der→izq)
         self.velocidad_bala = -12
@@ -115,6 +121,12 @@ class Juego:
 
         self._apply_resolution(start_w, start_h, reset_positions=True)
         self._reset_estado_juego()
+
+        # --- HITBOX AJUSTADA ---
+        self.hitbox_offset_x = int(40 * self.scale)
+        self.hitbox_offset_y = int(70 * self.scale)
+        self.hitbox_w = int(45 * self.scale)
+        self.hitbox_h = int(50 * self.scale)
 
     # ----------------- resolución / assets -----------------
     def _apply_resolution(self, w: int, h: int, reset_positions: bool) -> None:
@@ -127,7 +139,7 @@ class Juego:
         ground_offset = int(100 * self.scale)
         self.ground_y = self.h - ground_offset
 
-        self.player_size = (int(64 * self.scale), int(144 * self.scale))
+        self.player_size = (int(128 * self.scale), int(128 * self.scale))
         self.bullet_size = (int(24 * self.scale), int(24 * self.scale))
         self.ship_size = (int(128 * self.scale), int(128 * self.scale))
         self.fondo_speed = max(1, int(2 * self.scale))
@@ -175,19 +187,38 @@ class Juego:
                 return surf
 
         base = os.path.dirname(__file__)
-        self.jugador_frames = [
-            safe_load(os.path.join(base, "assets/sprites/mono_frame_1.png"), self.player_size),
-            safe_load(os.path.join(base, "assets/sprites/mono_frame_2.png"), self.player_size),
-            safe_load(os.path.join(base, "assets/sprites/mono_frame_3.png"), self.player_size),
-            safe_load(os.path.join(base, "assets/sprites/mono_frame_4.png"), self.player_size),
-        ]
+        self.jugador_frames = []
+
+        for i in range(1, 17):  # del 01 al 16
+            nombre = f"RCG_Run_{i:02}.png"
+            ruta = os.path.join(base, "assets/run", nombre)
+
+            frame = safe_load(ruta, self.player_size)
+            self.jugador_frames.append(frame)
+
+        # --- SPRITES DE SALTO ---
+        self.jugador_salto_frames = []
+
+        for i in range(1, 4):  # 01, 02, 03
+            nombre = f"RCG_Jump_{i:02}.png"
+            ruta = os.path.join(base, "assets/jump", nombre)
+
+            frame = safe_load(ruta, self.player_size)
+            self.jugador_salto_frames.append(frame)
+
+        # --- SPRITE AGACHADO ---
+        self.jugador_agachado_img = safe_load(
+            os.path.join(base, "assets/down/RCG_AttackRunning_BackflipKick_10.png"),
+            (self.player_size[0], self.player_size[1] // 2)
+        )
+
         self.bala_img = safe_load(
             os.path.join(base, "assets/sprites/purple_ball.png"),
             self.bullet_size,
             (160, 120, 255, 255),
         )
         self.fondo_img = safe_load(
-            os.path.join(base, "assets/game/fondo2.png"),
+            os.path.join(base, "assets/background/fondo2.jpg"),
             (self.w, self.h),
             (40, 40, 40, 255),
         )
@@ -399,16 +430,15 @@ class Juego:
         if self.salto:
             self.jugador.y -= int(self.salto_vel)
             self.salto_vel -= self.gravedad
-            """if self.jugador.y >= self.ground_y:
-                self.jugador.y = self.ground_y
-                self.salto = False
-                self.salto_vel = self.salto_vel_inicial
-                self.en_suelo = True"""
+
             if self.jugador.bottom >= self.ground_y:
-                self.jugador.bottom = self.ground_y  # Alineamos los pies al ras del suelo
+                self.jugador.bottom = self.ground_y  # pies al suelo
                 self.salto = False
                 self.salto_vel = self.salto_vel_inicial
                 self.en_suelo = True
+
+                # reset animación salto
+                self.current_jump_frame = 0
 
 
     def registrar_decision_manual(self) -> None:
@@ -594,20 +624,27 @@ class Juego:
         self.pantalla.blit(self.fondo_img, (self.fondo_x1, 0))
         self.pantalla.blit(self.fondo_img, (self.fondo_x2, 0))
 
-        self.frame_count += 1
-        if self.frame_count >= self.frame_speed:
-            self.current_frame = (self.current_frame + 1) % len(self.jugador_frames)
-            self.frame_count = 0
+        # --- CONTROL DE ANIMACIONES ---
+        if not self.en_suelo:
+            self.jump_frame_count += 1
+            if self.jump_frame_count >= self.jump_frame_speed:
+                if self.current_jump_frame < len(self.jugador_salto_frames) - 1:
+                    self.current_jump_frame += 1
+                self.jump_frame_count = 0
+        else:
+            self.frame_count += 1
+            if self.frame_count >= self.run_frame_speed:
+                self.current_frame = (self.current_frame + 1) % len(self.jugador_frames)
+                self.frame_count = 0
 
-        #self.pantalla.blit(self.jugador_frames[self.current_frame], (self.jugador.x, self.jugador.y))
-        sprite_actual = self.jugador_frames[self.current_frame]
         
-        # Si está agachado, aplastamos la imagen dinámicamente
-        if self.agachado:
-            sprite_actual = pygame.transform.scale(
-                sprite_actual, 
-                (self.jugador.width, self.jugador.height)
-            )
+        # PRIORIDAD: salto > agachado > correr
+        if not self.en_suelo:
+            sprite_actual = self.jugador_salto_frames[self.current_jump_frame]
+        elif self.agachado:
+            sprite_actual = self.jugador_agachado_img
+        else:
+            sprite_actual = self.jugador_frames[self.current_frame]
 
         self.pantalla.blit(sprite_actual, (self.jugador.x, self.jugador.y))
         self.pantalla.blit(self.nave_img, (self.nave.x, self.nave.y))
@@ -618,10 +655,31 @@ class Juego:
             self.reset_bala()
         self.pantalla.blit(self.bala_img, (self.bala.x, self.bala.y))
 
+        # --- CREAR HITBOX REAL DEL JUGADOR ---
+
+        # Ajuste dinámico de altura
+        if self.agachado:
+            hitbox_h = int(35 * self.scale)
+            offset_y = self.hitbox_offset_y - int(35 * self.scale)  # 🔥 subir, no bajar
+        else:
+            hitbox_h = self.hitbox_h
+            offset_y = self.hitbox_offset_y
+
+        self.jugador_hitbox = pygame.Rect(
+            self.jugador.x + self.hitbox_offset_x,
+            self.jugador.y + offset_y,
+            self.hitbox_w,
+            hitbox_h
+        )
+
+        # DEBUG VISUAL HITBOX
+        pygame.draw.rect(self.pantalla, (255, 0, 0), self.jugador_hitbox, 2)  # roja = hitbox real
+        pygame.draw.rect(self.pantalla, (0, 255, 0), self.bala, 2)            # verde = bala
+
         # Si hay colisión, solo reiniciamos el estado del juego
         # pero NO volvemos al menú para evitar el efecto de
         # "se cierra y se abre" constantemente.
-        if self.jugador.colliderect(self.bala):
+        if self.jugador_hitbox.colliderect(self.bala):
             self._reset_estado_juego()
 
         # Info del modelo en tiempo real (solo si hay modelo entrenado)
