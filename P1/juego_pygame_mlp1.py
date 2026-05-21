@@ -48,7 +48,8 @@ class Sample:
 class Juego:
     def __init__(self) -> None:
         pygame.init()
-
+        self.salto_iniciado = False
+        self.agachado_iniciado = False
         # Ventana fija (sin redimensionamiento automático) para evitar
         # problemas en pantallas muy grandes / 2K / 4K.
         self._flags = 0
@@ -86,6 +87,7 @@ class Juego:
         self.decision_record_every = 3
         self._decision_frame_counter = 0
 
+
         # Geometría / física (se rellenan en _apply_resolution)
         self.w, self.h = start_w, start_h
         self.scale = 1.0
@@ -102,7 +104,8 @@ class Juego:
         self.salto_vel_inicial = 15.0
         self.gravedad = 1.0
         self.salto_vel = self.salto_vel_inicial
-
+        self.down_presionado_antes = False
+        self.frames_agachado_restantes = 0
         # --- ANIMACIÓN CORRER ---
         self.current_frame = 0
         self.run_frame_speed = 2
@@ -425,6 +428,7 @@ class Juego:
         if self.en_suelo:
             self.salto = True
             self.en_suelo = False
+            self.salto_iniciado = True
 
     def manejar_salto(self) -> None:
         if self.salto:
@@ -448,9 +452,9 @@ class Juego:
         
         # Etiquetamos la acción actual
         if not self.en_suelo:
-            accion_label = 1  # 1 = Saltar
-        elif self.agachado:
-            accion_label = 2  # 2 = Agacharse
+            accion_label = 1
+        elif self.agachado_iniciado:
+            accion_label = 2
         else:
             accion_label = 0  # 0 = Quieto
 
@@ -462,6 +466,9 @@ class Juego:
                 accion=accion_label,
             )
         )
+        # Reset flags
+        self.salto_iniciado = False
+        self.agachado_iniciado = False
     
     def entrenar_modelo(self) -> Tuple[bool, str]:
         samples = list(self.datos_modelo)
@@ -471,14 +478,6 @@ class Juego:
         # Ahora X tiene 3 variables y usamos s.accion
         X = [[s.velocidad_bala, s.distancia, s.altura_bala] for s in samples]
         y = [s.accion for s in samples]
-        
-        """clases = sorted(set(y))
-        if len(clases) < 2:
-            self._reset_modelo()
-            self.clase_unica = int(clases[0])
-            self.modelo_entrenado = True
-            tipo = f"CLASE ÚNICA ({self.clase_unica})"
-            return True, f"Modelo trivial entrenado: {tipo}. Faltan otras acciones."""
         
         clases = sorted(set(y))
         if len(clases) < 2:
@@ -500,10 +499,10 @@ class Juego:
         X_test = scaler.transform(X_test)
         
         clf = MLPClassifier(
-            hidden_layer_sizes=(10, 10),
+            hidden_layer_sizes=(20, 20),
             activation="relu",
             solver="adam",
-            max_iter=300000,
+            max_iter=1000,
             random_state=42,
         )
         clf.fit(X_train, y_train)
@@ -718,31 +717,37 @@ class Juego:
             if not self.corriendo:
                 break
             
-            # --- NUEVA LÓGICA DE AGACHARSE ---
+            # ---(TAP + HOLD) ---
             teclas = pygame.key.get_pressed()
-            # Solo se puede agachar si está en el suelo y NO está en modo automático (por ahora)
-            if teclas[pygame.K_DOWN] and self.en_suelo and not self.modo_auto:
+            down_actual = teclas[pygame.K_DOWN]
+
+            # TAP: activa animación corta
+            if down_actual and not self.down_presionado_antes and self.en_suelo and not self.modo_auto:
+                self.frames_agachado_restantes = 5  # duración del tap
+                self.agachado_iniciado = True
+
+            #HOLD: si mantienes, fuerza agachado continuo
+            if down_actual and self.en_suelo and not self.modo_auto:
+                self.frames_agachado_restantes = max(self.frames_agachado_restantes, 1)
+                self.agachado_iniciado = True
+            # Aplicar estado
+            if self.frames_agachado_restantes > 0:
+                self.frames_agachado_restantes -= 1
+
                 if not self.agachado:
                     self.agachado = True
-                    # Reducimos la hitbox a la mitad
                     self.jugador.height = self.player_size[1] // 2
                     self.jugador.bottom = self.ground_y
             else:
                 if self.agachado:
                     self.agachado = False
-                    # Restauramos la hitbox original
                     self.jugador.height = self.player_size[1]
                     self.jugador.bottom = self.ground_y
+
+            # Guardar estado anterior
+            self.down_presionado_antes = down_actual
             # ---------------------------------
 
-            """if self.modo_auto:
-                if self.decision_auto_saltar():
-                    self.iniciar_salto()
-            else:
-                # En modo manual registramos SIEMPRE la decisión de este frame.
-                # Ahora la etiqueta salto=1 cubre TODO el tiempo en el aire.
-                self.registrar_decision_manual()"""
-            
             if self.modo_auto:
                 accion_predicha = self.decision_auto()
                 
