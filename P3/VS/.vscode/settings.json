@@ -1,0 +1,4 @@
+{
+  "rnnKeras.pythonPath": "py",
+  "rnnKeras.serverScript": "D:\\VS\\P3\\rnn-keras-autocomplete\\server_stdio.py"
+}

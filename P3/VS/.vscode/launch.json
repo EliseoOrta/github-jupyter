@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Asistente C RNN",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=D:\\VS\\P3\\rnn-keras-autocomplete\\vscode-extension"
+      ]
+    }
+  ]
+}
